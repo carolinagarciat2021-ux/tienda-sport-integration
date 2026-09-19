@@ -1,22 +1,37 @@
 import React, { useState } from 'react';
 
+const METODOS_PAGO = [
+  { valor: 'contraentrega', etiqueta: '💵 Pago contra entrega (efectivo)' },
+  { valor: 'transferencia', etiqueta: '🏦 Transferencia bancaria' }
+];
+
 /**
  * Componente: CartView
  * Muestra el carrito de compras y permite confirmar el pedido,
  * el cual se guarda en MySQL a través de la API (tablas pedido y detalle_pedido).
+ *
+ * Flujo de pago: el usuario elige un método de pago (informativo; este
+ * proyecto no procesa pagos reales con tarjeta, así que se maneja como
+ * "pago contra entrega" o "transferencia", igual que muchas tiendas
+ * pequeñas reales). Al confirmar, se muestra una pantalla de éxito clara
+ * en vez de dejar al usuario viendo el carrito vacío sin explicación.
  */
 const CartView = ({ cart = [], user, onUpdateQuantity, onRemoveItem, onCheckout, onGoToStore, onGoToLogin, onGoToRegister }) => {
   const [procesando, setProcesando] = useState(false);
+  const [metodoPago, setMetodoPago] = useState('');
+  const [pedidoConfirmado, setPedidoConfirmado] = useState(null); // { idPedido, total, metodoPago } | null
 
   const total = cart.reduce((acc, item) => acc + (item.precioMayorista * item.cantidad), 0);
 
   const handleConfirmar = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || !metodoPago) return;
 
     setProcesando(true);
     try {
       const idPedido = await onCheckout();
-      alert(`✅ ¡Pedido #${idPedido} realizado con éxito! Quedó guardado en la base de datos.`);
+      // Guardamos el resultado ANTES de que el carrito se vacíe, para mostrar
+      // la pantalla de éxito en vez de caer directo en "carrito vacío".
+      setPedidoConfirmado({ idPedido, total, metodoPago });
     } catch (error) {
       alert(`❌ No se pudo completar el pedido: ${error.message}`);
     } finally {
@@ -24,6 +39,41 @@ const CartView = ({ cart = [], user, onUpdateQuantity, onRemoveItem, onCheckout,
     }
   };
 
+  const handleVolverAComprar = () => {
+    setPedidoConfirmado(null);
+    setMetodoPago('');
+    onGoToStore();
+  };
+
+  // ---------- Pantalla de ÉXITO tras confirmar el pedido ----------
+  if (pedidoConfirmado) {
+    const etiquetaMetodo = METODOS_PAGO.find(m => m.valor === pedidoConfirmado.metodoPago)?.etiqueta || '';
+    return (
+      <div style={{ textAlign: 'center', padding: '50px 20px', backgroundColor: '#fff', borderRadius: '8px', border: '2px solid #2e7d32', marginTop: '20px' }}>
+        <div style={{ fontSize: '3rem' }}>✅</div>
+        <h2 style={{ color: '#2e7d32', marginBottom: '4px' }}>¡Pedido confirmado!</h2>
+        <p style={{ color: '#555', fontSize: '1.1rem' }}>
+          Tu pedido <strong>#{pedidoConfirmado.idPedido}</strong> quedó registrado correctamente.
+        </p>
+        <p style={{ color: '#555' }}>
+          Total: <strong>${pedidoConfirmado.total.toLocaleString('es-CO')}</strong> · Método de pago: <strong>{etiquetaMetodo}</strong>
+        </p>
+        <p style={{ color: '#888', fontSize: '0.9rem', maxWidth: '480px', margin: '10px auto' }}>
+          No hace falta hacer nada más: el pedido ya quedó guardado en la base de datos y el stock
+          se descontó automáticamente. Si elegiste transferencia, coordina el pago con la tienda por
+          fuera de la página; si elegiste contra entrega, pagas cuando te llegue el pedido.
+        </p>
+        <button
+          onClick={handleVolverAComprar}
+          style={{ marginTop: '15px', padding: '12px 24px', backgroundColor: '#1a2a6c', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
+        >
+          Seguir comprando
+        </button>
+      </div>
+    );
+  }
+
+  // ---------- Carrito genuinamente vacío (no acaba de comprar) ----------
   if (cart.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 20px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #ddd', marginTop: '20px' }}>
@@ -111,6 +161,25 @@ const CartView = ({ cart = [], user, onUpdateQuantity, onRemoveItem, onCheckout,
         </table>
       </div>
 
+      {/* Selección del método de pago: obligatoria antes de poder confirmar */}
+      {user && (
+        <div style={{ backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px', padding: '16px 18px', marginTop: '16px' }}>
+          <h3 style={{ margin: '0 0 10px 0', color: '#1a2a6c', fontSize: '1.05rem' }}>Método de pago</h3>
+          {METODOS_PAGO.map((m) => (
+            <label key={m.valor} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="metodoPago"
+                value={m.valor}
+                checked={metodoPago === m.valor}
+                onChange={(e) => setMetodoPago(e.target.value)}
+              />
+              {m.etiqueta}
+            </label>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px', gap: '20px', alignItems: 'center' }}>
         <span style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#1a2a6c' }}>
           Total: ${total.toLocaleString('es-CO')}
@@ -118,15 +187,16 @@ const CartView = ({ cart = [], user, onUpdateQuantity, onRemoveItem, onCheckout,
         {user ? (
           <button
             onClick={handleConfirmar}
-            disabled={procesando}
+            disabled={procesando || !metodoPago}
+            title={!metodoPago ? 'Elige un método de pago primero' : ''}
             style={{
               padding: '12px 24px',
-              backgroundColor: procesando ? '#999' : '#2e7d32',
+              backgroundColor: (procesando || !metodoPago) ? '#999' : '#2e7d32',
               color: '#fff',
               border: 'none',
               borderRadius: '6px',
               fontWeight: 'bold',
-              cursor: procesando ? 'not-allowed' : 'pointer'
+              cursor: (procesando || !metodoPago) ? 'not-allowed' : 'pointer'
             }}
           >
             {procesando ? 'Procesando...' : '✅ Confirmar Pedido'}

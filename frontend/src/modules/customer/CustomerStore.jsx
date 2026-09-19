@@ -9,6 +9,7 @@ const CustomerStore = ({ products = [], categorias = [], user, onToggleLoginScre
   // Estados para los filtros del menú lateral
   const [selectedGenero, setSelectedGenero] = useState('Todos');
   const [selectedCategoria, setSelectedCategoria] = useState('Todas');
+  const [categoriaExpandida, setCategoriaExpandida] = useState(null); // qué tipo de prenda tiene abierto su submenú de género
   const [searchQuery, setSearchQuery] = useState('');
 
   // Estados para la selección del usuario por producto (Talla, Color, Cantidad)
@@ -27,8 +28,6 @@ const CustomerStore = ({ products = [], categorias = [], user, onToggleLoginScre
     const nombres = categorias.map(c => c.nombre).filter(Boolean);
     return ['Todas', ...Array.from(new Set(nombres))];
   }, [categorias]);
-
-  const tallasDisponibles = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 
   // Manejo de cambios en los selectores por producto
   const handleSizeChange = (id, talla) => {
@@ -70,9 +69,13 @@ const CustomerStore = ({ products = [], categorias = [], user, onToggleLoginScre
   const handleAddToCart = (prod) => {
     const id = prod.idProducto || prod.id_producto;
 
-    // Obtener valores seleccionados o usar por defecto los del producto
-    const listaColores = prod.color ? prod.color.split(',').map(c => c.trim()) : ['Único'];
-    const tallaElegida = selectedSizes[id] || prod.talla || 'M';
+    // Obtener valores seleccionados o usar por defecto los del producto.
+    // IMPORTANTE: la talla por defecto debe ser SOLO la primera talla real
+    // del producto (no el texto completo "XS,S,M,L,XL,XXL" tal cual viene
+    // guardado cuando el producto tiene varias tallas disponibles).
+    const listaColores = prod.color ? prod.color.split(',').map(c => c.trim()).filter(Boolean) : ['Único'];
+    const listaTallas = prod.talla ? prod.talla.split(',').map(t => t.trim()).filter(Boolean) : ['M'];
+    const tallaElegida = selectedSizes[id] || listaTallas[0];
     const colorElegido = selectedColors[id] || listaColores[0];
     const cantidadElegida = selectedQuantities[id] || 1;
     const precio = prod.precioMayorista || prod.precio_mayorista || 0;
@@ -146,63 +149,104 @@ const CustomerStore = ({ products = [], categorias = [], user, onToggleLoginScre
           />
         </div>
 
-        {/* SECCIÓN GÉNERO */}
-        <div style={{ marginBottom: '25px' }}>
-          <h4 style={{ margin: '0 0 10px 0', fontSize: '1rem', color: '#333', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            👤 Género
-          </h4>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {generos.map((gen) => (
-              <li key={gen} style={{ marginBottom: '6px' }}>
-                <button
-                  onClick={() => setSelectedGenero(gen)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    backgroundColor: selectedGenero === gen ? '#1a2a6c' : '#f5f5f5',
-                    color: selectedGenero === gen ? '#ffffff' : '#333333',
-                    fontWeight: selectedGenero === gen ? 'bold' : 'normal',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {gen}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-
         {/* SECCIÓN TIPO DE PRENDA */}
+      
+        {/* SECCIÓN TIPO DE PRENDA — al hacer clic en una prenda, se despliega
+            un submenú para elegir Hombre / Mujer / Infantil dentro de ese tipo,
+            tal como se pidió: "si quieren buscar una camiseta, que salga una
+            subselección de género". El filtro rápido de género de arriba
+            sigue funcionando igual para ver todo un género sin importar la prenda. */}
         <div>
           <h4 style={{ margin: '0 0 10px 0', fontSize: '1rem', color: '#333', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             👕 Tipo de Prenda
           </h4>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {tiposPrenda.map((tipo) => (
-              <li key={tipo} style={{ marginBottom: '6px' }}>
-                <button
-                  onClick={() => setSelectedCategoria(tipo)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    backgroundColor: selectedCategoria === tipo ? '#2e7d32' : '#f9f9f9',
-                    color: selectedCategoria === tipo ? '#ffffff' : '#444444',
-                    fontWeight: selectedCategoria === tipo ? 'bold' : 'normal',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {tipo}
-                </button>
-              </li>
-            ))}
+            {/* "Todas" no tiene submenú: reinicia el filtro de tipo de prenda */}
+            <li style={{ marginBottom: '6px' }}>
+              <button
+                onClick={() => { setSelectedCategoria('Todas'); setCategoriaExpandida(null); }}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: selectedCategoria === 'Todas' ? '#2e7d32' : '#f9f9f9',
+                  color: selectedCategoria === 'Todas' ? '#ffffff' : '#444444',
+                  fontWeight: selectedCategoria === 'Todas' ? 'bold' : 'normal',
+                  cursor: 'pointer'
+                }}
+              >
+                Todas
+              </button>
+            </li>
+
+            {tiposPrenda.filter(t => t !== 'Todas').map((tipo) => {
+              const estaExpandida = categoriaExpandida === tipo;
+              const estaSeleccionada = selectedCategoria === tipo;
+              return (
+                <li key={tipo} style={{ marginBottom: '6px' }}>
+                  <button
+                    onClick={() => {
+                      // Un clic selecciona esta prenda (con el género que ya esté activo)
+                      // y abre/cierra su submenú de género.
+                      setSelectedCategoria(tipo);
+                      setCategoriaExpandida(estaExpandida ? null : tipo);
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      backgroundColor: estaSeleccionada ? '#2e7d32' : '#f9f9f9',
+                      color: estaSeleccionada ? '#ffffff' : '#444444',
+                      fontWeight: estaSeleccionada ? 'bold' : 'normal',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <span>{tipo}</span>
+                    <span style={{ fontSize: '0.75rem' }}>{estaExpandida ? '▲' : '▼'}</span>
+                  </button>
+
+                  {/* Submenú de género, solo visible cuando esta prenda está expandida */}
+                  {estaExpandida && (
+                    <ul style={{ listStyle: 'none', padding: '6px 0 0 14px', margin: 0, borderLeft: '2px solid #e0e0e0' }}>
+                      {generos.map((gen) => {
+                        const subSeleccionado = estaSeleccionada && selectedGenero === gen;
+                        return (
+                          <li key={gen} style={{ marginBottom: '4px' }}>
+                            <button
+                              onClick={() => {
+                                setSelectedCategoria(tipo);
+                                setSelectedGenero(gen);
+                              }}
+                              style={{
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '6px 10px',
+                                borderRadius: '5px',
+                                border: 'none',
+                                fontSize: '0.85rem',
+                                backgroundColor: subSeleccionado ? '#1a2a6c' : '#ffffff',
+                                color: subSeleccionado ? '#ffffff' : '#555555',
+                                fontWeight: subSeleccionado ? 'bold' : 'normal',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {gen === 'Todos' ? `Todo (${tipo})` : gen}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
 
@@ -212,6 +256,7 @@ const CustomerStore = ({ products = [], categorias = [], user, onToggleLoginScre
             onClick={() => {
               setSelectedGenero('Todos');
               setSelectedCategoria('Todas');
+              setCategoriaExpandida(null);
               setSearchQuery('');
             }}
             style={{
@@ -265,16 +310,29 @@ const CustomerStore = ({ products = [], categorias = [], user, onToggleLoginScre
               const categoriaNombre = prod.categoria || prod.tipoPrenda;
 
               // Parsear los colores disponibles si vienen separados por comas
-              const listaColores = prod.color ? prod.color.split(',').map(c => c.trim()) : ['Único'];
-              
-              const currentTalla = selectedSizes[id] || prod.talla || 'M';
+              const listaColores = prod.color ? prod.color.split(',').map(c => c.trim()).filter(Boolean) : ['Único'];
+
+              // Parsear las tallas REALES de este producto (no todas las tallas posibles del sistema)
+              const listaTallas = prod.talla ? prod.talla.split(',').map(t => t.trim()).filter(Boolean) : ['M'];
+
+              const currentTalla = selectedSizes[id] || listaTallas[0];
               const currentColor = selectedColors[id] || listaColores[0];
               const currentQuantity = selectedQuantities[id] || 1;
 
               // Obtener la imagen según el color seleccionado (si existen múltiples imágenes guardadas)
+              // Imagen según el color elegido: primero busca en `imagenesPorColor`
+              // (formato "Negro=url1;Azul=url2", guardado de verdad en la BD),
+              // y si ese color no tiene URL propia, usa la galería local o la imagen general.
+              const mapaImagenesPorColor = {};
+              if (prod.imagenesPorColor) {
+                prod.imagenesPorColor.split(';').forEach(par => {
+                  const [c, url] = par.split('=');
+                  if (c && url) mapaImagenesPorColor[c.trim()] = url.trim();
+                });
+              }
               const colorIndex = Math.max(0, listaColores.indexOf(currentColor));
               const galeriaImagenes = prod.imagenes && prod.imagenes.length > 0 ? prod.imagenes : [prod.imagenUrl || prod.imagen || '/imagenes/productos/default.png'];
-              const imagenMostrada = galeriaImagenes[colorIndex] || galeriaImagenes[0];
+              const imagenMostrada = mapaImagenesPorColor[currentColor] || galeriaImagenes[colorIndex] || galeriaImagenes[0];
 
               return (
                 <div 
@@ -362,7 +420,7 @@ const CustomerStore = ({ products = [], categorias = [], user, onToggleLoginScre
                           translate="no"
                           className="notranslate"
                         >
-                          {tallasDisponibles.map(talla => (
+                          {listaTallas.map(talla => (
                             <option key={talla} value={talla}>{talla}</option>
                           ))}
                         </select>

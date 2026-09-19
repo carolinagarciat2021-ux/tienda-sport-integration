@@ -33,6 +33,25 @@ public class PedidoDAO {
         return lista;
     }
 
+    public Pedido obtenerPorId(int idPedido) throws SQLException {
+        String sql = "SELECT * FROM pedido WHERE id_pedido = ?";
+        try (Connection con = Conexion.getConexion();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setInt(1, idPedido);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new Pedido(
+                        rs.getInt("id_pedido"),
+                        rs.getTimestamp("fecha"),
+                        rs.getString("estado"),
+                        rs.getInt("id_cliente")
+                    );
+                }
+            }
+        }
+        return null;
+    }
+
     public void registrarPedido(Pedido p) throws SQLException {
         insertar(p);
     }

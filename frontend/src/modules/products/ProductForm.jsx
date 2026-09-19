@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
-const TALLAS_OPCIONES = ["XS", "S", "M", "L", "XL", "XXL"];
+const TALLAS_OPCIONES_ADULTO = ["XS", "S", "M", "L", "XL", "XXL"];
+const TALLAS_OPCIONES_INFANTIL = ["2", "4", "6", "8", "10", "12", "14", "16"];
 
 /**
  * Componente: ProductForm (Vista Administrador)
@@ -17,14 +18,36 @@ const ProductForm = ({ onAddProduct, categorias = [] }) => {
     color: '',
     imagenUrlManual: ''
   });
+  const [guardando, setGuardando] = useState(false);
 
   const [tallasSeleccionadas, setTallasSeleccionadas] = useState([]);
   const [imagenesLocales, setImagenesLocales] = useState([]);
+  const [imagenesPorColorMap, setImagenesPorColorMap] = useState({}); // { "Negro": "https://...", "Azul": "..." }
   const [error, setError] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+
+    // Al cambiar de género, las tallas ya marcadas dejan de tener sentido
+    // (las tallas de adulto no aplican a Infantil y viceversa), así que se limpian.
+    if (name === 'genero') {
+      setTallasSeleccionadas([]);
+    }
+  };
+
+  // La lista de tallas depende del género elegido: numéricas para Infantil,
+  // XS-XXL para los demás.
+  const opcionesTalla = formData.genero === 'Infantil' ? TALLAS_OPCIONES_INFANTIL : TALLAS_OPCIONES_ADULTO;
+
+  // Colores que el usuario ya escribió en el campo "Colores Disponibles",
+  // uno por uno, para poder pedirle una URL de imagen específica por cada color.
+  const listaColoresEscritos = formData.color
+    ? formData.color.split(',').map(c => c.trim()).filter(Boolean)
+    : [];
+
+  const handleImagenColorChange = (color, url) => {
+    setImagenesPorColorMap(prev => ({ ...prev, [color]: url }));
   };
 
   const handleTallaToggle = (talla) => {
@@ -44,7 +67,7 @@ const ProductForm = ({ onAddProduct, categorias = [] }) => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const { nombre, costoProducto, precioMayorista, stock } = formData;
 
@@ -52,33 +75,57 @@ const ProductForm = ({ onAddProduct, categorias = [] }) => {
       setError('Por favor complete todos los campos requeridos.');
       return;
     }
+    if (tallasSeleccionadas.length === 0) {
+      setError('Selecciona al menos una talla.');
+      return;
+    }
 
-    onAddProduct({
-      ...formData,
-      talla: tallasSeleccionadas.join(','),
-      costoProducto: parseFloat(costoProducto),
-      precioMayorista: parseFloat(precioMayorista),
-      stock: parseInt(stock, 10),
-      // Prioriza la URL manual (persistente); si no hay, usa la imagen local (solo de vista previa)
-      imagenUrl: (formData.imagenUrlManual && formData.imagenUrlManual.trim()) || imagenesLocales[0] || '/imagenes/productos/default.png',
-      imagenes: imagenesLocales.length > 0 ? imagenesLocales : ['/imagenes/productos/default.png']
-    });
-
-    // Limpiar formulario
-    setFormData({
-      nombre: '',
-      descripcion: '',
-      costoProducto: '',
-      precioMayorista: '',
-      stock: '',
-      idCategoria: categorias[0]?.id_categoria ? String(categorias[0].id_categoria) : '1',
-      genero: 'Hombre',
-      color: '',
-      imagenUrlManual: ''
-    });
-    setTallasSeleccionadas([]);
-    setImagenesLocales([]);
     setError('');
+    setGuardando(true);
+    try {
+      // Convierte { "Negro": "url1", "Azul": "url2" } en "Negro=url1;Azul=url2",
+      // solo con los colores que de verdad tienen una URL escrita.
+      const imagenesPorColorTexto = listaColoresEscritos
+        .filter(c => imagenesPorColorMap[c] && imagenesPorColorMap[c].trim())
+        .map(c => `${c}=${imagenesPorColorMap[c].trim()}`)
+        .join(';');
+
+      await onAddProduct({
+        ...formData,
+        talla: tallasSeleccionadas.join(','),
+        costoProducto: parseFloat(costoProducto),
+        precioMayorista: parseFloat(precioMayorista),
+        stock: parseInt(stock, 10),
+        // Prioriza la URL manual (persistente); si no hay, usa la imagen local (solo de vista previa)
+        imagenUrl: (formData.imagenUrlManual && formData.imagenUrlManual.trim()) || imagenesLocales[0] || '/imagenes/productos/default.png',
+        imagenesPorColor: imagenesPorColorTexto,
+        imagenes: imagenesLocales.length > 0 ? imagenesLocales : ['/imagenes/productos/default.png']
+      });
+
+      // Solo llegamos aquí si onAddProduct NO lanzó un error, es decir, si de
+      // verdad quedó guardado en la base de datos. Por eso limpiamos el
+      // formulario aquí adentro, y no antes.
+      setFormData({
+        nombre: '',
+        descripcion: '',
+        costoProducto: '',
+        precioMayorista: '',
+        stock: '',
+        idCategoria: categorias[0]?.id_categoria ? String(categorias[0].id_categoria) : '1',
+        genero: 'Hombre',
+        color: '',
+        imagenUrlManual: ''
+      });
+      setTallasSeleccionadas([]);
+      setImagenesLocales([]);
+      setImagenesPorColorMap({});
+    } catch (err) {
+      // Si falla, dejamos todo lo que el usuario ya escribió tal como estaba,
+      // para que no tenga que volver a llenar el formulario desde cero.
+      setError(err.message || 'No se pudo guardar el producto. Intenta de nuevo.');
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -134,8 +181,11 @@ const ProductForm = ({ onAddProduct, categorias = [] }) => {
         {/* Selección Múltiple de Tallas con protección contra traducción automática */}
         <div className="form-group" style={{ marginBottom: '10px' }}>
           <label style={{ fontWeight: 'bold' }}>Tallas Disponibles (*):</label>
-          <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-            {TALLAS_OPCIONES.map(talla => (
+          <p style={{ fontSize: '0.75rem', color: '#666', margin: '2px 0 6px 0' }}>
+            {formData.genero === 'Infantil' ? 'Tallas numéricas (ropa infantil)' : 'Tallas de adulto'}
+          </p>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '5px', flexWrap: 'wrap' }}>
+            {opcionesTalla.map(talla => (
               <label key={talla} style={{ cursor: 'pointer' }} translate="no" className="notranslate">
                 <input 
                   type="checkbox" 
@@ -151,6 +201,29 @@ const ProductForm = ({ onAddProduct, categorias = [] }) => {
           <label>Colores Disponibles (separados por coma):</label>
           <input type="text" name="color" value={formData.color} onChange={handleChange} placeholder="Ej: Negro, Azul, Rosa" style={{ width: '100%', padding: '8px' }} />
         </div>
+
+        {/* Una URL de imagen distinta por cada color, para que el mismo producto
+            muestre la foto correcta según el color que el cliente elija */}
+        {listaColoresEscritos.length > 0 && (
+          <div className="form-group" style={{ marginBottom: '10px', backgroundColor: '#f8f9fa', padding: '10px', borderRadius: '6px' }}>
+            <label style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>Imagen para cada color (opcional):</label>
+            <p style={{ fontSize: '0.75rem', color: '#666', margin: '2px 0 8px 0' }}>
+              Si dejas alguno vacío, ese color usará la "URL de Imagen" general de más abajo.
+            </p>
+            {listaColoresEscritos.map((color) => (
+              <div key={color} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={{ width: '90px', fontSize: '0.85rem', fontWeight: 'bold' }}>{color}:</span>
+                <input
+                  type="text"
+                  value={imagenesPorColorMap[color] || ''}
+                  onChange={(e) => handleImagenColorChange(color, e.target.value)}
+                  placeholder={`https://.../${color.toLowerCase()}.png`}
+                  style={{ flex: 1, padding: '6px' }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="form-group" style={{ marginBottom: '10px' }}>
           <label>Costo del Producto (*):</label>
@@ -197,8 +270,8 @@ const ProductForm = ({ onAddProduct, categorias = [] }) => {
           )}
         </div>
 
-        <button type="submit" style={{ width: '100%', padding: '10px', backgroundColor: '#1a2a6c', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          Guardar Producto en Base de Datos
+        <button type="submit" disabled={guardando} style={{ width: '100%', padding: '10px', backgroundColor: guardando ? '#888' : '#1a2a6c', color: '#fff', border: 'none', borderRadius: '4px', cursor: guardando ? 'not-allowed' : 'pointer' }}>
+          {guardando ? 'Guardando...' : 'Guardar Producto en Base de Datos'}
         </button>
       </form>
     </div>

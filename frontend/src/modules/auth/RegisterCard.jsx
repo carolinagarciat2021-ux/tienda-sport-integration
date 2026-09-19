@@ -35,7 +35,7 @@ const RegisterCard = ({ onRegister, onCancel, onGoToLogin }) => {
     if (!regexEmail.test(correo)) {
       return "Error: El correo electrónico debe contener un formato válido con '@'.";
     }
-    // Misma regla que valida el backend: mínimo 8 caracteres, con letras y números.
+    // Misma regla que valida el backend: mínimo 8 caracteres, con letras, números y símbolo.
     // Se valida aquí también para que el usuario vea el error al instante, sin
     // esperar la respuesta del servidor.
     if (password.length < 8) {
@@ -43,8 +43,9 @@ const RegisterCard = ({ onRegister, onCancel, onGoToLogin }) => {
     }
     const tieneLetra = /[A-Za-z]/.test(password);
     const tieneNumero = /[0-9]/.test(password);
-    if (!tieneLetra || !tieneNumero) {
-      return "La contraseña debe incluir al menos una letra y un número.";
+    const tieneSimbolo = /[^A-Za-z0-9]/.test(password);
+    if (!tieneLetra || !tieneNumero || !tieneSimbolo) {
+      return "La contraseña debe incluir al menos una letra, un número y un símbolo (por ejemplo: @, #, $, %, !, -, _).";
     }
     return null;
   };
@@ -99,7 +100,7 @@ const RegisterCard = ({ onRegister, onCancel, onGoToLogin }) => {
           <label>Contraseña (*):</label>
           <input type="password" name="password" value={formData.password} onChange={handleChange} required minLength={8} style={{ width: '100%', padding: '8px' }} />
           <p style={{ fontSize: '0.75rem', color: '#666', margin: '4px 0 0 0' }}>
-            Mínimo 8 caracteres, con al menos una letra y un número.
+            Mínimo 8 caracteres, con al menos una letra, un número y un símbolo (@, #, $, %, !, -, _...).
           </p>
         </div>
 

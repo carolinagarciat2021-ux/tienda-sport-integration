@@ -17,7 +17,7 @@ public class DetallePedidoDAO {
     // si algo falla a mitad de camino (ej. sin stock suficiente).
     public int insertar(DetallePedido d) throws SQLException {
         String sqlVerificarStock = "SELECT stock FROM producto WHERE id_producto = ? FOR UPDATE";
-        String sqlInsertar = "INSERT INTO detalle_pedido (id_pedido, id_variante, id_producto, cantidad, precio_unitario) VALUES (?, ?, ?, ?, ?)";
+        String sqlInsertar = "INSERT INTO detalle_pedido (id_pedido, id_variante, id_producto, talla, color, cantidad, precio_unitario) VALUES (?, ?, ?, ?, ?, ?, ?)";
         String sqlActualizarStock = "UPDATE producto SET stock = stock - ? WHERE id_producto = ?";
 
         try (Connection con = Conexion.getConexion()) {
@@ -48,8 +48,10 @@ public class DetallePedidoDAO {
                         ps.setNull(2, java.sql.Types.INTEGER);
                     }
                     ps.setInt(3, d.getIdProducto());
-                    ps.setInt(4, d.getCantidad());
-                    ps.setDouble(5, d.getPrecioUnitario());
+                    ps.setString(4, d.getTalla());
+                    ps.setString(5, d.getColor());
+                    ps.setInt(6, d.getCantidad());
+                    ps.setDouble(7, d.getPrecioUnitario());
                     ps.executeUpdate();
                     try (ResultSet rs = ps.getGeneratedKeys()) {
                         if (rs.next()) idDetalleGenerado = rs.getInt(1);
@@ -89,6 +91,8 @@ public class DetallePedidoDAO {
                         rs.getInt("id_pedido"),
                         idVariante,
                         rs.getInt("id_producto"),
+                        rs.getString("talla"),
+                        rs.getString("color"),
                         rs.getInt("cantidad"),
                         rs.getDouble("precio_unitario")
                     ));
@@ -112,6 +116,8 @@ public class DetallePedidoDAO {
                     rs.getInt("id_pedido"),
                     idVariante,
                     rs.getInt("id_producto"),
+                    rs.getString("talla"),
+                    rs.getString("color"),
                     rs.getInt("cantidad"),
                     rs.getDouble("precio_unitario")
                 ));

@@ -86,6 +86,7 @@ public class ServidorApi {
                             .append("\"costo_producto\":").append(p.getCostoProducto()).append(",")
                             .append("\"stock\":").append(p.getStock()).append(",")
                             .append("\"imagen_url\":\"").append(p.getImagenUrl() != null ? p.getImagenUrl() : "").append("\",")
+                            .append("\"imagenes_por_color\":\"").append(p.getImagenesPorColor() != null ? p.getImagenesPorColor().replace("\"", "") : "").append("\",")
                             .append("\"id_categoria\":").append(p.getIdCategoria())
                             .append("}");
                         if (i < lista.size() - 1) json.append(",");
@@ -163,10 +164,13 @@ public class ServidorApi {
             double costo = parseDoubleSeguro(obtenerValorJson(body, "costo_producto"));
             int stock = parseIntSeguro(obtenerValorJson(body, "stock"));
             String imagen = obtenerValorJson(body, "imagen_url");
+            String imagenesPorColor = obtenerValorJson(body, "imagenes_por_color");
             int categoria = parseIntSeguro(obtenerValorJson(body, "id_categoria"));
             if (categoria == 0) categoria = 1;
 
-            return new Producto(id, nombre, descripcion, talla, color, genero, precio, costo, stock, imagen, categoria);
+            Producto p = new Producto(id, nombre, descripcion, talla, color, genero, precio, costo, stock, imagen, categoria);
+            p.setImagenesPorColor(imagenesPorColor);
+            return p;
         }
     }
 
@@ -421,20 +425,24 @@ public class ServidorApi {
             }
 
             try {
-                // 1. PETICIÓN GET (Consultar todos los pedidos) — requiere estar autenticado
+                // 1. PETICIÓN GET (Consultar pedidos) — Cliente ve solo los suyos; Administrador/Vendedor ven todos
                 if ("GET".equalsIgnoreCase(metodo)) {
-                    if (requerirSesion(exchange) == null) return;
+                    TokenManager.Sesion sesion = requerirSesion(exchange);
+                    if (sesion == null) return;
                     List<Pedido> lista = pedidoDAO.listarTodos();
+                    boolean puedeVerTodos = (sesion.idRol == 1 || sesion.idRol == 3); // Administrador o Vendedor
                     StringBuilder json = new StringBuilder("[");
-                    for (int i = 0; i < lista.size(); i++) {
-                        Pedido p = lista.get(i);
+                    boolean primero = true;
+                    for (Pedido p : lista) {
+                        if (!puedeVerTodos && p.getIdCliente() != sesion.idClientes) continue; // Un Cliente no ve pedidos de otros
+                        if (!primero) json.append(",");
+                        primero = false;
                         json.append("{")
                             .append("\"id_pedido\":").append(p.getIdPedido()).append(",")
                             .append("\"fecha\":\"").append(p.getFecha() != null ? p.getFecha().toString() : "").append("\",")
                             .append("\"estado\":\"").append(p.getEstado() != null ? p.getEstado() : "").append("\",")
                             .append("\"id_cliente\":").append(p.getIdCliente())
                             .append("}");
-                        if (i < lista.size() - 1) json.append(",");
                     }
                     json.append("]");
                     responder(exchange, 200, json.toString());
@@ -517,6 +525,7 @@ public class ServidorApi {
     // Al insertar, descuenta automáticamente el stock del producto vendido.
     static class DetallePedidoHandler implements HttpHandler {
         private final DetallePedidoDAO detalleDAO = new DetallePedidoDAO();
+        private final PedidoDAO pedidoDAOConsulta = new PedidoDAO();
 
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -529,15 +538,30 @@ public class ServidorApi {
             }
 
             try {
-                // 1. PETICIÓN GET (Consultar el detalle de un pedido: /api/detalle_pedido?id_pedido=5)
+                // 1. PETICIÓN GET (Consultar el detalle de un pedido: /api/detalle_pedido?id_pedido=5) — requiere sesión
                 if ("GET".equalsIgnoreCase(metodo)) {
+                    TokenManager.Sesion sesion = requerirSesion(exchange);
+                    if (sesion == null) return;
+
                     String query = exchange.getRequestURI().getQuery();
                     List<DetallePedido> lista;
                     if (query != null && query.contains("id_pedido=")) {
                         int idPedido = parseIntSeguro(query.split("id_pedido=")[1].split("&")[0]);
+
+                        // Un Cliente solo puede ver el detalle de SUS PROPIOS pedidos
+                        if (sesion.idRol == 2) {
+                            Pedido pedido = pedidoDAOConsulta.obtenerPorId(idPedido);
+                            if (pedido == null || pedido.getIdCliente() != sesion.idClientes) {
+                                responder(exchange, 403, "{\"error\": \"No tienes permiso para ver este pedido\"}");
+                                return;
+                            }
+                        }
                         lista = detalleDAO.listarPorPedido(idPedido);
+                    } else if (sesion.idRol == 1 || sesion.idRol == 3) {
+                        lista = detalleDAO.listarTodos(); // Solo Administrador/Vendedor puede pedir el listado completo sin filtrar
                     } else {
-                        lista = detalleDAO.listarTodos();
+                        responder(exchange, 403, "{\"error\": \"Debes indicar 'id_pedido'\"}");
+                        return;
                     }
 
                     StringBuilder json = new StringBuilder("[");
@@ -547,6 +571,8 @@ public class ServidorApi {
                             .append("\"id_detalle\":").append(d.getIdDetalle()).append(",")
                             .append("\"id_pedido\":").append(d.getIdPedido()).append(",")
                             .append("\"id_producto\":").append(d.getIdProducto()).append(",")
+                            .append("\"talla\":\"").append(d.getTalla() != null ? d.getTalla() : "").append("\",")
+                            .append("\"color\":\"").append(d.getColor() != null ? d.getColor() : "").append("\",")
                             .append("\"cantidad\":").append(d.getCantidad()).append(",")
                             .append("\"precio_unitario\":").append(d.getPrecioUnitario())
                             .append("}");
@@ -561,6 +587,8 @@ public class ServidorApi {
                     String body = leerCuerpo(exchange);
                     int idPedido = parseIntSeguro(obtenerValorJson(body, "id_pedido"));
                     int idProducto = parseIntSeguro(obtenerValorJson(body, "id_producto"));
+                    String talla = obtenerValorJson(body, "talla");
+                    String color = obtenerValorJson(body, "color");
                     int cantidad = parseIntSeguro(obtenerValorJson(body, "cantidad"));
                     double precioUnitario = parseDoubleSeguro(obtenerValorJson(body, "precio_unitario"));
 
@@ -569,7 +597,7 @@ public class ServidorApi {
                         return;
                     }
 
-                    DetallePedido d = new DetallePedido(0, idPedido, null, idProducto, cantidad, precioUnitario);
+                    DetallePedido d = new DetallePedido(0, idPedido, null, idProducto, talla, color, cantidad, precioUnitario);
                     int idGenerado = detalleDAO.insertar(d);
                     responder(exchange, 201, "{\"mensaje\": \"Detalle de pedido registrado y stock actualizado\", \"id_detalle\": " + idGenerado + "}");
 
@@ -723,8 +751,9 @@ public class ServidorApi {
         }
         boolean tieneLetra = password.chars().anyMatch(Character::isLetter);
         boolean tieneNumero = password.chars().anyMatch(Character::isDigit);
-        if (!tieneLetra || !tieneNumero) {
-            return "La contraseña debe incluir al menos una letra y un número.";
+        boolean tieneSimbolo = password.chars().anyMatch(c -> !Character.isLetterOrDigit(c));
+        if (!tieneLetra || !tieneNumero || !tieneSimbolo) {
+            return "La contraseña debe incluir al menos una letra, un número y un símbolo (por ejemplo: @, #, $, %, !, -, _).";
         }
         return null;
     }

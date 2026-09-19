@@ -10,8 +10,8 @@ public class ProductoDAO {
 
     // Crear Producto (Vista Administrador)
     public void insertar(Producto p) throws SQLException {
-        String sql = "INSERT INTO producto (nombre, descripcion, talla, color, genero, precio_mayorista, costo_producto, stock, imagen_url, id_categoria) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO producto (nombre, descripcion, talla, color, genero, precio_mayorista, costo_producto, stock, imagen_url, imagenes_por_color, id_categoria) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection con = Conexion.conectar();
              PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setString(1, p.getNombre());
@@ -29,8 +29,9 @@ public class ProductoDAO {
             } else {
                 ps.setString(9, "/imagenes/productos/default.png"); 
             }
+            ps.setString(10, p.getImagenesPorColor());
 
-            ps.setInt(10, p.getIdCategoria());
+            ps.setInt(11, p.getIdCategoria());
             ps.executeUpdate();
             System.out.println("[BD Real-Time]: Producto '" + p.getNombre() + "' registrado correctamente.");
         }
@@ -82,7 +83,7 @@ public class ProductoDAO {
     // Actualizar producto existente (Administrador)
     public boolean actualizar(Producto p) throws SQLException {
         String sql = "UPDATE producto SET nombre = ?, descripcion = ?, talla = ?, color = ?, genero = ?, " +
-                     "precio_mayorista = ?, costo_producto = ?, stock = ?, imagen_url = ?, id_categoria = ? " +
+                     "precio_mayorista = ?, costo_producto = ?, stock = ?, imagen_url = ?, imagenes_por_color = ?, id_categoria = ? " +
                      "WHERE id_producto = ?";
         try (Connection con = Conexion.conectar();
              PreparedStatement ps = con.prepareStatement(sql)) {
@@ -95,8 +96,9 @@ public class ProductoDAO {
             ps.setDouble(7, p.getCostoProducto());
             ps.setInt(8, p.getStock());
             ps.setString(9, p.getImagenUrl());
-            ps.setInt(10, p.getIdCategoria());
-            ps.setInt(11, p.getIdProducto());
+            ps.setString(10, p.getImagenesPorColor());
+            ps.setInt(11, p.getIdCategoria());
+            ps.setInt(12, p.getIdProducto());
             
             return ps.executeUpdate() > 0;
         }
@@ -136,7 +138,7 @@ public class ProductoDAO {
     }
 
     private Producto extraerProducto(ResultSet rs) throws SQLException {
-        return new Producto(
+        Producto p = new Producto(
             rs.getInt("id_producto"),
             rs.getString("nombre"),
             rs.getString("descripcion"),
@@ -149,5 +151,7 @@ public class ProductoDAO {
             rs.getString("imagen_url"),
             rs.getInt("id_categoria")
         );
+        p.setImagenesPorColor(rs.getString("imagenes_por_color"));
+        return p;
     }
 }

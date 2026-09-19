@@ -17,6 +17,12 @@ export const obtenerToken = () => localStorage.getItem(CLAVE_TOKEN);
 
 export const borrarToken = () => localStorage.removeItem(CLAVE_TOKEN);
 
+// Permite que App.jsx se entere cuando el backend rechaza el token (sesión
+// vencida o el servidor se reinició y perdió la sesión en memoria), para
+// cerrar sesión automáticamente en vez de dejar un error confuso en pantalla.
+let manejador401 = null;
+export const registrarManejador401 = (callback) => { manejador401 = callback; };
+
 /**
  * Función genérica para enviar peticiones HTTP a la API.
  * Soporta GET, POST, PUT y DELETE, y adjunta el token de sesión
@@ -41,6 +47,15 @@ const apiRequest = async (endpoint, metodo = 'GET', datos = null) => {
     const texto = await respuesta.text();
     if (texto) {
       try { cuerpo = JSON.parse(texto); } catch (e) { cuerpo = texto; }
+    }
+
+    if (respuesta.status === 401 && token) {
+      // El token que teníamos guardado ya no es válido para el backend
+      // (sesión vencida, o el servidor se reinició y la perdió). Lo borramos
+      // y avisamos a App.jsx para que cierre la sesión en la interfaz también,
+      // en vez de dejar al usuario viendo "Debes iniciar sesión" sin explicación.
+      borrarToken();
+      if (manejador401) manejador401();
     }
 
     if (!respuesta.ok) {
@@ -103,7 +118,7 @@ export const listarDetallePedido = (idPedido) => apiRequest(`detalle_pedido?id_p
  * Envía un pedido completo: crea el pedido (asociado automáticamente al
  * usuario logueado, según su token) y luego cada línea del carrito como
  * detalle_pedido (esto también descuenta el stock en el backend).
- * items: [{ id_producto, cantidad, precio_unitario }]
+ * items: [{ id_producto, cantidad, precio_unitario, talla, color }]
  * Devuelve el id_pedido creado.
  */
 export const enviarPedidoCompleto = async (items) => {
@@ -114,10 +129,28 @@ export const enviarPedidoCompleto = async (items) => {
     await crearDetallePedido({
       id_pedido: idPedido,
       id_producto: item.id_producto,
+      talla: item.talla,
+      color: item.color,
       cantidad: item.cantidad,
       precio_unitario: item.precio_unitario,
     });
   }
 
   return idPedido;
+};
+
+/**
+ * Trae todos los pedidos junto con su detalle (líneas de productos comprados).
+ * Si el usuario es Administrador/Vendedor, el backend devuelve TODOS los pedidos;
+ * si es Cliente, el backend ya filtra y solo devuelve los suyos.
+ */
+export const listarPedidosConDetalle = async () => {
+  const pedidos = await listarPedidos();
+  const pedidosConDetalle = await Promise.all(
+    (pedidos || []).map(async (pedido) => {
+      const detalle = await listarDetallePedido(pedido.id_pedido);
+      return { ...pedido, detalle: detalle || [] };
+    })
+  );
+  return pedidosConDetalle;
 };

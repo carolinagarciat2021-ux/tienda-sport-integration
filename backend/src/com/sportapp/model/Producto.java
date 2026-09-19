@@ -12,6 +12,8 @@ public class Producto {
     private int stock;
     private String imagenUrl;
     private int idCategoria;
+    // JSON de texto: {"Negro":"url1","Azul":"url2"} — una imagen distinta por color del producto
+    private String imagenesPorColor;
 
     public Producto() {}
 
@@ -63,4 +65,7 @@ public class Producto {
 
     public int getIdCategoria() { return idCategoria; }
     public void setIdCategoria(int idCategoria) { this.idCategoria = idCategoria; }
+
+    public String getImagenesPorColor() { return imagenesPorColor; }
+    public void setImagenesPorColor(String imagenesPorColor) { this.imagenesPorColor = imagenesPorColor; }
 }

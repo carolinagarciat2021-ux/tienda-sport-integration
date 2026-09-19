@@ -6,7 +6,7 @@ import React from 'react';
  */
 const Navbar = ({ user, onLogout, setView, cartCount = 0 }) => {
   return (
-    <header className="navbar-main" style={{ backgroundColor: '#1a2a6c', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px', color: '#fff' }}>
+    <header className="navbar-main" style={{ backgroundColor: '#1a2a6c', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px', color: '#fff', flexWrap: 'wrap', gap: '8px' }}>
       <div className="nav-brand" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 'bold' }}>Tienda Sport</h1>
         {user && (
@@ -16,25 +16,37 @@ const Navbar = ({ user, onLogout, setView, cartCount = 0 }) => {
         )}
       </div>
 
-      <nav className="nav-links" style={{ display: 'flex', gap: '12px' }}>
+      <nav className="nav-links" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         {user?.role === 'Administrador' && (
           <>
-            <button onClick={() => setView('inventario')} className="nav-btn">📋 Ver Inventario y Valoración</button>
+            <button onClick={() => setView('inventario')} className="nav-btn">📋 Inventario</button>
             <button onClick={() => setView('crear')} className="nav-btn">➕ Registrar Producto</button>
+            <button onClick={() => setView('categorias')} className="nav-btn">🗂️ Categorías</button>
+            <button onClick={() => setView('usuarios')} className="nav-btn">👥 Usuarios</button>
+            <button onClick={() => setView('pedidos')} className="nav-btn">📦 Pedidos</button>
           </>
+        )}
+        {user?.role === 'Vendedor' && (
+          <>
+            <button onClick={() => setView('inventario')} className="nav-btn">📋 Inventario</button>
+            <button onClick={() => setView('crear')} className="nav-btn">➕ Registrar Producto</button>
+            <button onClick={() => setView('pedidos')} className="nav-btn">📦 Pedidos</button>
+          </>
+        )}
+        {user?.role === 'Cliente' && (
+          <button onClick={() => setView('pedidos')} className="nav-btn">📦 Mis Pedidos</button>
         )}
         <button onClick={() => setView('tienda_publica')} className="nav-btn" style={{ color: '#ffeb3b', fontWeight: 'bold' }}>
           🏪 Catálogo / Tienda
         </button>
-        {(!user || user.role === 'Cliente') && (
-          <button onClick={() => setView('carrito')} className="nav-btn" style={{ position: 'relative' }}>
-            🛒 Carrito {cartCount > 0 && (
-              <span style={{ backgroundColor: '#00e676', color: '#111', borderRadius: '10px', padding: '1px 7px', fontSize: '0.75rem', fontWeight: 'bold', marginLeft: '4px' }}>
-                {cartCount}
-              </span>
-            )}
-          </button>
-        )}
+        {/* El carrito se ve para cualquiera con sesión (incluido Admin/Vendedor) y para invitados */}
+        <button onClick={() => setView('carrito')} className="nav-btn" style={{ position: 'relative' }}>
+          🛒 Carrito {cartCount > 0 && (
+            <span style={{ backgroundColor: '#00e676', color: '#111', borderRadius: '10px', padding: '1px 7px', fontSize: '0.75rem', fontWeight: 'bold', marginLeft: '4px' }}>
+              {cartCount}
+            </span>
+          )}
+        </button>
       </nav>
 
       <div className="nav-user" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>

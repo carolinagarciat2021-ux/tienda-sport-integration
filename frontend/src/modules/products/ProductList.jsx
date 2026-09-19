@@ -95,7 +95,7 @@ const ProductList = ({ products = [], onUpdateProduct, onDeleteProduct }) => {
           <thead>
             <tr style={{ background: '#f5f5f5', borderBottom: '2px solid #ccc', textAlign: 'left' }}>
               <th style={{ padding: '10px' }}>Foto</th>
-              <th style={{ padding: '10px' }}>Descripción de la Prenda</th>
+              <th style={{ padding: '10px' }}>Nombre del Producto</th>
               <th style={{ padding: '10px' }}>Talla</th>
               <th style={{ padding: '10px' }}>Color</th>
               <th style={{ padding: '10px' }}>Costo</th>
@@ -152,7 +152,7 @@ const ProductList = ({ products = [], onUpdateProduct, onDeleteProduct }) => {
                         style={{ padding: '6px', width: '100%', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #999' }}
                       />
                     ) : (
-                      <strong style={{ color: '#222' }}>{prod.descripcion || prod.nombre}</strong>
+                      <strong style={{ color: '#222' }}>{prod.nombre || prod.descripcion}</strong>
                     )}
                   </td>
 

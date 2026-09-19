@@ -7,6 +7,9 @@ import AdminDashboard from './modules/dashboard/AdminDashboard';
 import ProductForm from './modules/products/ProductForm';
 import ProductList from './modules/products/ProductList';
 import CartView from './modules/cart/CartView';
+import UserManagement from './modules/users/UserManagement';
+import AdminOrders from './modules/orders/AdminOrders';
+import CategoryManagement from './modules/categories/CategoryManagement';
 import {
   listarProductos,
   listarCategorias,
@@ -17,6 +20,7 @@ import {
   iniciarSesion,
   cerrarSesion,
   obtenerToken,
+  registrarManejador401,
   enviarPedidoCompleto
 } from './api';
 
@@ -58,7 +62,7 @@ function App() {
   // Sesión: se restaura de localStorage si ya existía un login previo (mientras el token siga vigente)
   const [user, setUser] = useState(() => (obtenerToken() ? leerUsuarioGuardado() : null));
 
-  // Vista actual: 'tienda_publica', 'login', 'registro', 'inventario', 'crear', 'carrito'
+  // Vista actual: 'tienda_publica', 'login', 'registro', 'inventario', 'crear', 'carrito', 'usuarios', 'pedidos', 'categorias'
   const [currentView, setCurrentView] = useState('tienda_publica');
 
   // Catálogo real, traído desde MySQL a través de la API
@@ -74,6 +78,29 @@ function App() {
   useEffect(() => {
     localStorage.setItem(CLAVE_CARRITO, JSON.stringify(cart));
   }, [cart]);
+
+  // ------------------------------------------------------------------
+  // Sesión: cerrar sesión (declarado antes para poder registrarlo como
+  // manejador del evento 401 más abajo)
+  // ------------------------------------------------------------------
+  const handleLogout = useCallback(() => {
+    cerrarSesion(); // borra el token; el carrito de invitado NO se borra
+    setUser(null);
+    localStorage.removeItem(CLAVE_USUARIO);
+    setCurrentView('tienda_publica');
+  }, []);
+
+  // Si el backend rechaza el token (sesión vencida, o el servidor se
+  // reinició y la perdió de su memoria), cerramos sesión automáticamente
+  // en la interfaz y avisamos, en vez de dejar un error confuso en pantalla.
+  useEffect(() => {
+    registrarManejador401(() => {
+      if (user) {
+        alert('Tu sesión ya no es válida (probablemente el servidor se reinició). Por favor inicia sesión de nuevo.');
+        handleLogout();
+      }
+    });
+  }, [user, handleLogout]);
 
   // ------------------------------------------------------------------
   // Carga de datos reales desde el backend
@@ -98,6 +125,7 @@ function App() {
         costoProducto: p.costo_producto,
         precioMayorista: p.precio_mayorista,
         imagenUrl: p.imagen_url,
+        imagenesPorColor: p.imagenes_por_color || '',
         idCategoria: p.id_categoria,
         genero: p.genero || 'Unisex',
         categoria: mapaCategorias[p.id_categoria] || ''
@@ -107,7 +135,7 @@ function App() {
       setProducts(normalizados);
     } catch (error) {
       console.error(error);
-      setErrorCatalogo('No se pudo conectar con el servidor API (http://localhost:8080). Verifica que ServidorApi esté corriendo, que MySQL esté encendido y que hayas ejecutado el script de migración (columna "genero").');
+      setErrorCatalogo('No se pudo conectar con el servidor API (http://localhost:8080). Verifica que ServidorApi esté corriendo, que MySQL esté encendido y que hayas ejecutado los scripts de migración.');
     } finally {
       setCargandoCatalogo(false);
     }
@@ -118,7 +146,7 @@ function App() {
   }, [cargarCatalogo]);
 
   // ------------------------------------------------------------------
-  // Sesión: login / registro / logout (contra la tabla `clientes`)
+  // Sesión: login / registro (contra la tabla `clientes`)
   // ------------------------------------------------------------------
   const handleLogin = async (email, password, role) => {
     try {
@@ -141,13 +169,6 @@ function App() {
     } catch (error) {
       return { success: false, error: error.message || 'Credenciales inválidas.' };
     }
-  };
-
-  const handleLogout = () => {
-    cerrarSesion(); // borra el token; el carrito de invitado NO se borra
-    setUser(null);
-    localStorage.removeItem(CLAVE_USUARIO);
-    setCurrentView('tienda_publica');
   };
 
   const handleRegister = async (newUser) => {
@@ -176,24 +197,23 @@ function App() {
   // CRUD de productos (Administrador / Vendedor) contra la tabla `producto`
   // ------------------------------------------------------------------
   const handleAddProduct = async (newProduct) => {
-    try {
-      await guardarProducto({
-        nombre: newProduct.nombre,
-        descripcion: newProduct.descripcion,
-        talla: newProduct.talla,
-        color: newProduct.color,
-        genero: newProduct.genero,
-        precio_mayorista: newProduct.precioMayorista,
-        costo_producto: newProduct.costoProducto,
-        stock: newProduct.stock,
-        imagen_url: newProduct.imagenUrl,
-        id_categoria: newProduct.idCategoria
-      });
-      await cargarCatalogo();
-      setCurrentView('inventario');
-    } catch (error) {
-      alert(`No se pudo guardar el producto: ${error.message}`);
-    }
+    await guardarProducto({
+      nombre: newProduct.nombre,
+      descripcion: newProduct.descripcion,
+      talla: newProduct.talla,
+      color: newProduct.color,
+      genero: newProduct.genero,
+      precio_mayorista: newProduct.precioMayorista,
+      costo_producto: newProduct.costoProducto,
+      stock: newProduct.stock,
+      imagen_url: newProduct.imagenUrl,
+      imagenes_por_color: newProduct.imagenesPorColor,
+      id_categoria: newProduct.idCategoria
+    });
+    await cargarCatalogo();
+    setCurrentView('inventario');
+    // Si guardarProducto falla, lanza un error y este bloque no sigue;
+    // ProductForm es quien captura ese error, avisa y CONSERVA lo que el usuario escribió.
   };
 
   const handleUpdateProduct = async (id, updatedProduct) => {
@@ -210,6 +230,7 @@ function App() {
         costo_producto: updatedProduct.costoProducto ?? updatedProduct.costo,
         stock: updatedProduct.stock,
         imagen_url: updatedProduct.imagenUrl ?? updatedProduct.imagen,
+        imagenes_por_color: updatedProduct.imagenesPorColor ?? (productoActual ? productoActual.imagenesPorColor : ''),
         // ProductList no permite cambiar la categoría; conservamos la actual
         id_categoria: productoActual ? productoActual.idCategoria : 1
       });
@@ -268,6 +289,8 @@ function App() {
     }
     const items = cart.map(item => ({
       id_producto: item.idProducto,
+      talla: item.talla,
+      color: item.color,
       cantidad: item.cantidad,
       precio_unitario: item.precioMayorista
     }));
@@ -362,6 +385,21 @@ function App() {
         {/* Vista: Registro de Nuevo Producto (Administrador / Vendedor) */}
         {currentView === 'crear' && (
           <ProductForm onAddProduct={handleAddProduct} categorias={categorias} />
+        )}
+
+        {/* Vista: Gestión de Usuarios (solo Administrador) */}
+        {currentView === 'usuarios' && user?.role === 'Administrador' && (
+          <UserManagement />
+        )}
+
+        {/* Vista: Gestión de Categorías (solo Administrador) */}
+        {currentView === 'categorias' && user?.role === 'Administrador' && (
+          <CategoryManagement onCategoriasChange={cargarCatalogo} />
+        )}
+
+        {/* Vista: Pedidos — Administrador/Vendedor ven todos, Cliente ve solo los suyos */}
+        {currentView === 'pedidos' && user && (
+          <AdminOrders modoCliente={user.role === 'Cliente'} />
         )}
 
       </main>
